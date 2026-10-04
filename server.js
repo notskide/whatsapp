@@ -1,44 +1,39 @@
 const express = require('express');
-const mongoose = require('mongoose');
-
+const fs = require('fs');
 const app = express();
 app.use(express.json());
-
 const PORT = process.env.PORT || 3000;
-const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/bb_whatsapp";
+const DB_FILE = 'database.json';
 
-mongoose.connect(MONGO_URI)
-  .then(() => console.log('MongoDB connected'))
-  .catch(err => console.error('MongoDB error:', err));
+if (!fs.existsSync(DB_FILE)) {
+    fs.writeFileSync(DB_FILE, JSON.stringify([]));
+}
 
-const MessageSchema = new mongoose.Schema({
-  sender: { type: String, required: true },
-  text: { type: String, required: true },
-  timestamp: { type: Date, default: Date.now }
-});
-
-const Message = mongoose.model('Message', MessageSchema);
-
-app.get('/messages', async (req, res) => {
+app.get('/messages', (req, res) => {
     try {
-        const messages = await Message.find().sort({ _id: -1 }).limit(50);
-        res.json({ status: "success", messages: messages.reverse() });
+        const data = fs.readFileSync(DB_FILE);
+        const messages = JSON.parse(data);
+        res.json({ status: "success", messages: messages.slice(-50) });
     } catch (err) {
-        res.status(500).json({ error: "Failed to fetch messages" });
+        res.status(500).json({ error: "Failed" });
     }
 });
 
-app.post('/send', async (req, res) => {
+app.post('/send', (req, res) => {
     const { sender, message } = req.body;
     if (!sender || !message) {
-        return res.status(400).json({ error: "Missing parameters" });
+        return res.status(400).json({ error: "Missing" });
     }
     try {
-        const newMessage = new Message({ sender, text: message });
-        await newMessage.save();
-        res.json({ status: "success", message: newMessage });
+        const data = fs.readFileSync(DB_FILE);
+        const messages = JSON.parse(data);
+        const entry = { id: Date.now(), sender, text: message, timestamp: new Date().toISOString() };
+        messages.push(entry);
+        if (messages.length > 500) messages.shift();
+        fs.writeFileSync(DB_FILE, JSON.stringify(messages));
+        res.json({ status: "success", message: entry });
     } catch (err) {
-        res.status(500).json({ error: "Failed to save message" });
+        res.status(500).json({ error: "Failed" });
     }
 });
 
